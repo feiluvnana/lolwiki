@@ -1,8 +1,10 @@
-import 'package:flncrawly/flncrawly.dart';
+import 'dart:async';
 
-/// Intercepts the input (responses) and output (items/requests) of a [Processor].
-///
-/// Corresponds to "Spider Middleware" in Scrapy.
+import 'package:flncrawly/src/processor/processor.dart';
+import 'package:flncrawly/src/request/request.dart';
+import 'package:flncrawly/src/response/response.dart';
+
+/// Defines an interceptor for response processing and extraction.
 abstract class ProcessorMiddleware<
   T,
   Req extends Request,
@@ -10,29 +12,17 @@ abstract class ProcessorMiddleware<
 > {
   const ProcessorMiddleware();
 
-  /// Intercepts and transforms the stream of initial seed requests.
-  Stream<Req> onStart(Stream<Req> seeds) => seeds;
+  /// Modifies or passes through the [Res] (Top-to-Bottom).
+  Future<Res> onInput(Res res) async => res;
 
-  /// Called before the response enters the processor's Parse logic.
-  ///
-  /// Use this to ignore responses, modify them, or track session state.
-  Future<void> onInput(Res response) async {}
+  /// Transformation following extraction (Bottom-to-Top).
+  Stream<PMResult<T, Req>> onOutput(
+    Res res,
+    Stream<PMResult<T, Req>> results,
+  ) => results;
 
-  /// Intercepts and transforms the stream of results yielded by the processor.
-  ///
-  /// This can be used to filter items, add metadata to followed requests,
-  /// or drop requests based on a policy (e.g., Depth).
-  Stream<PCResult<T, Req>> onOutput(
-    Res response,
-    Stream<PCResult<T, Req>> result,
-  ) => result;
+  /// Recovery which returns a replacement stream (Bottom-to-Top).
+  Stream<PMResult<T, Req>>? onError(Res res, Object error) => null;
 
-  /// Handles exceptions raised by the processor or an [onOutput] hook.
-  ///
-  /// Return a new stream of [PCResult]s to handle the error, or `null`
-  /// to continue letting the next middleware's [onException] handle it.
-  Stream<PCResult<T, Req>>? onException(Res response, Object exception) => null;
-
-  /// Cleanup logic called when the engine stops.
   void close() {}
 }

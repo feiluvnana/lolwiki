@@ -4,118 +4,76 @@ import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
 /// The engine for downloading requests via a chain of middlewares.
-/// At least one middleware in the chain must produce a [ProxyResponse]
-/// (usually the last one acting as a fetcher).
-class Downloader<Req extends Request, Res extends Response> {
-  /// The engine instance running this downloader.
-  late final Engine engine;
-  
-  /// The list of middlewares configured for this downloader.
+class Downloader<T, Req extends Request, Res extends Response> {
+  late final Engine<T, Req, Res> engine;
   final List<DownloaderMiddleware<Req, Res>> middlewares;
 
   Downloader({this.middlewares = const []});
 
-  /// Entry point for the engine to download a request.
-  /// Orchestrates the [processRequest] chain (Top-to-Bottom).
-  Future<DMResult<Req, Res>> download(Req req) async {
-    var currentRequest = req;
-
-    for (int i = 0; i < middlewares.length; i++) {
+  Future<DMResult<Req, Res>> handle(Req req) async {
+    var curReq = req;
+    for (var i = 0; i < middlewares.length; i++) {
       try {
-        final result = await middlewares[i].processRequest(currentRequest);
-
-        switch (result) {
+        final res = await middlewares[i].processRequest(curReq);
+        switch (res) {
           case NextRequest(:final request):
-            currentRequest = request;
-          case RescheduleRequest() || ReportError() || IgnoreResult():
-            return result;
+            curReq = request;
           case ProxyResponse(:final response):
-            // Response produced by a middleware.
-            // Start the response processing chain bottom-to-top from this middleware.
-            return _handleResponse(currentRequest, response, i);
+            return _handleRes(curReq, response, i);
+          case RescheduleRequest() || ReportError() || IgnoreResult():
+            return res;
         }
       } catch (e) {
-        // Exception in processRequest: start exception chain from this middleware backwards.
-        return _handleException(currentRequest, e, i);
+        return _handleErr(curReq, e, i);
       }
     }
-
-    // No middleware produced a response or error.
-    return DMResult.error(
-      StateError(
-        'No middleware handled the request to ${currentRequest.url}. '
-        'At least one middleware (e.g. a fetcher) must return a ProxyResponse.',
-      ),
-    );
+    return DMResult.error(StateError('No fetcher handled ${curReq.url}'));
   }
 
-  /// Orchestrates [processResponse] chain (Bottom-to-Top).
-  Future<DMResult<Req, Res>> _handleResponse(
-    Req req,
-    Res res,
-    int startIndex,
-  ) async {
-    var currentResponse = res;
-
-    // Process backwards from the middleware that produced/last-saw the response.
-    for (int i = startIndex; i >= 0; i--) {
+  Future<DMResult<Req, Res>> _handleRes(Req r, Res res, int si) async {
+    var curRes = res;
+    for (var i = si; i >= 0; i--) {
       try {
-        final result = await middlewares[i].processResponse(
-          req,
-          currentResponse,
-        );
-
-        switch (result) {
+        final reslt = await middlewares[i].processResponse(r, curRes);
+        switch (reslt) {
           case ProxyResponse(:final response):
-            currentResponse = response;
+            curRes = response;
           case RescheduleRequest() || ReportError() || IgnoreResult():
-            return result;
+            return reslt;
           case NextRequest():
-            throw StateError('processResponse must not return NextRequest');
+            throw StateError('Downloader: Invalid response yield');
         }
       } catch (e) {
-        // If a response handler fails, it triggers the remaining exception chain bottom-to-top.
-        return _handleException(req, e, i - 1);
+        return _handleErr(r, e, i - 1);
       }
     }
-    return DMResult.response(currentResponse);
+    return DMResult.response(curRes);
   }
 
-  /// Orchestrates [processException] chain (Bottom-to-Top).
-  Future<DMResult<Req, Res>> _handleException(
-    Req req,
-    Object error,
-    int startIndex,
-  ) async {
-    var currentError = error;
-
-    for (int i = startIndex; i >= 0; i--) {
+  Future<DMResult<Req, Res>> _handleErr(Req r, Object e, int si) async {
+    var curErr = e;
+    for (var i = si; i >= 0; i--) {
       try {
-        final result = await middlewares[i].processException(req, currentError);
-
-        switch (result) {
+        final reslt = await middlewares[i].processException(r, curErr);
+        switch (reslt) {
           case ReportError(:final error):
-            currentError = error;
+            curErr = error;
           case ProxyResponse(:final response):
-            // Exception handled, start response chain from this point upwards.
-            return _handleResponse(req, response, i - 1);
+            return _handleRes(r, response, i - 1);
           case RescheduleRequest() || IgnoreResult():
-            return result;
+            return reslt;
           case NextRequest():
-            throw StateError(
-              'processException must return ReportError, ProxyResponse, Reschedule, or Ignore',
-            );
+            throw StateError('Downloader: Invalid error yield');
         }
       } catch (e) {
-        currentError = e; // Replace current error with the one from the handler
+        curErr = e;
       }
     }
-    return DMResult.error(currentError);
+    return DMResult.error(curErr);
   }
 
-  /// Closes all configured middlewares.
   void close() {
-    for (final m in middlewares) {
+    for (var m in middlewares) {
       m.close();
     }
   }

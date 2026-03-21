@@ -8,39 +8,23 @@ import 'package:flncrawly/src/response/response.dart';
 class DepthMiddleware<T, Req extends Request, Res extends Response>
     extends ProcessorMiddleware<T, Req, Res> {
   final int maxDepth;
-  final bool verbose;
 
-  DepthMiddleware({this.maxDepth = 5, this.verbose = false});
-
-  @override
-  Stream<Req> onStart(Stream<Req> seeds) async* {
-    await for (final s in seeds) {
-      if (!s.meta.containsKey('depth')) {
-        yield s.copyWith(meta: {...s.meta, 'depth': 0}) as Req;
-      } else {
-        yield s;
-      }
-    }
-  }
+  const DepthMiddleware({this.maxDepth = 5});
 
   @override
-  Stream<PCResult<T, Req>> onOutput(
+  Stream<PMResult<T, Req>> onOutput(
     Res res,
-    Stream<PCResult<T, Req>> result,
+    Stream<PMResult<T, Req>> results,
   ) async* {
     final currentDepth = (res.request.meta['depth'] as int?) ?? 0;
 
-    await for (final r in result) {
+    await for (final r in results) {
       if (r is Follow<T, Req>) {
         final nextDepth = currentDepth + 1;
         if (nextDepth <= maxDepth) {
-          yield PCResult.follow(
+          yield PMResult.follow(
             r.request.copyWith(meta: {...r.request.meta, 'depth': nextDepth})
                 as Req,
-          );
-        } else if (verbose) {
-          print(
-            '⚠️ Depth limit ($maxDepth) reached for ${r.request.url}. Dropping.',
           );
         }
       } else {
