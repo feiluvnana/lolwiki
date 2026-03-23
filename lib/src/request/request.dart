@@ -1,36 +1,22 @@
-/// Represents an HTTP request to be executed by the crawler engine.
+/// An HTTP request to be fetched by the crawler engine.
+///
+/// ```dart
+/// Request.to('https://example.com')
+/// Request.post('https://api.example.com/login', body: utf8.encode('...'))
+/// Request(url: Uri.parse('https://example.com'), priority: 10)
+/// ```
 class Request {
-  /// The target URL of the request.
   final Uri url;
-
-  /// The HTTP method to use (e.g., 'GET', 'POST'). Defaults to 'GET'.
   final String method;
-
-  /// Custom HTTP headers to include in the request.
   final Map<String, String> headers;
-
-  /// HTTP cookies to include in the request, sent via the 'Cookie' header.
   final Map<String, String> cookies;
-
-  /// The raw request body as bytes. Useful for POST or PUT requests.
   final List<int>? body;
-
-  /// The character encoding for the request.
   final String? encoding;
-
-  /// The scheduling priority. Higher numbers are dispatched first.
   final int priority;
-
-  /// User-defined metadata associated with this request, carried over to the response.
   final Map<String, dynamic> meta;
-
-  /// The number of times this request has been retried.
   final int retries;
-
-  /// If true, the dispatcher will skip duplicate URL filtering for this request.
   final bool dontFilter;
 
-  /// Creates a new [Request] instance.
   const Request({
     required this.url,
     this.method = 'GET',
@@ -44,17 +30,53 @@ class Request {
     this.dontFilter = false,
   });
 
-  /// Unique fingerprint for deduplication.
-  /// Includes [method], [url], and a hash of the [body] if present.
+  /// GET request from a URL string.
+  factory Request.to(
+    String url, {
+    Map<String, String> headers = const {},
+    Map<String, String> cookies = const {},
+    Map<String, dynamic> meta = const {},
+    int priority = 0,
+    bool dontFilter = false,
+  }) => Request(
+    url: Uri.parse(url),
+    headers: headers,
+    cookies: cookies,
+    meta: meta,
+    priority: priority,
+    dontFilter: dontFilter,
+  );
+
+  /// POST request from a URL string.
+  factory Request.post(
+    String url, {
+    List<int>? body,
+    String? encoding,
+    Map<String, String> headers = const {},
+    Map<String, String> cookies = const {},
+    Map<String, dynamic> meta = const {},
+    int priority = 0,
+    bool dontFilter = false,
+  }) => Request(
+    url: Uri.parse(url),
+    method: 'POST',
+    body: body,
+    encoding: encoding,
+    headers: headers,
+    cookies: cookies,
+    meta: meta,
+    priority: priority,
+    dontFilter: dontFilter,
+  );
+
+  /// Combines [method], [url], and [body] hash for deduplication.
   String get fingerprint {
     if (body == null || body!.isEmpty) return '$method:$url';
     return '$method:$url:${body.hashCode}';
   }
 
-  /// Creates a copy of this request with an incremented [retries] count.
   Request nextRetry() => copyWith(retries: retries + 1);
 
-  /// Creates a copy of this request with the specified fields updated.
   Request copyWith({
     Uri? url,
     String? method,
@@ -66,20 +88,18 @@ class Request {
     Map<String, dynamic>? meta,
     int? retries,
     bool? dontFilter,
-  }) {
-    return Request(
-      url: url ?? this.url,
-      method: method ?? this.method,
-      headers: headers ?? this.headers,
-      cookies: cookies ?? this.cookies,
-      body: body ?? this.body,
-      encoding: encoding ?? this.encoding,
-      priority: priority ?? this.priority,
-      meta: meta ?? this.meta,
-      retries: retries ?? this.retries,
-      dontFilter: dontFilter ?? this.dontFilter,
-    );
-  }
+  }) => Request(
+    url: url ?? this.url,
+    method: method ?? this.method,
+    headers: headers ?? this.headers,
+    cookies: cookies ?? this.cookies,
+    body: body ?? this.body,
+    encoding: encoding ?? this.encoding,
+    priority: priority ?? this.priority,
+    meta: meta ?? this.meta,
+    retries: retries ?? this.retries,
+    dontFilter: dontFilter ?? this.dontFilter,
+  );
 
   @override
   String toString() => '[$method] $url';

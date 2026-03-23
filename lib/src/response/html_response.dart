@@ -3,11 +3,29 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart';
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
-/// A response containing HTML content, providing powerful query tools.
+/// A response containing HTML content with CSS and XPath query capabilities.
+///
+/// ### CSS Selectors
+/// ```dart
+/// final title = res.$('h1')?.text();
+/// final links = res.$all('a').attr('href');
+/// final price = res.$('.product')?.$('.price')?.text();
+/// ```
+///
+/// ### XPath Selectors
+/// ```dart
+/// final node = res.$x('//div[@class="content"]');
+/// final items = res.$xall('//li/a').text();
+/// ```
+///
+/// ### Absolute URLs
+/// ```dart
+/// final url = res.$('a')?.absurl('href');
+/// // 'page/2' → 'https://example.com/page/2'
+/// ```
 class HtmlResponse extends TextResponse {
   late final Document _doc = parse(text);
 
-  /// Creates a new [HtmlResponse] instance.
   HtmlResponse({
     required super.url,
     required super.status,
@@ -17,116 +35,125 @@ class HtmlResponse extends TextResponse {
     required super.meta,
   });
 
-  /// The root selector for this document.
-  HtmlSelector get selector => HtmlSelector.document(_doc);
+  /// Root selector, with [url] as base for resolving relative links.
+  HtmlSelector get selector {
+    final root = _doc.documentElement;
+    if (root == null) throw StateError('No documentElement.');
+    return HtmlSelector._(root, url);
+  }
 
-  /// Find a single element matching the given CSS [selector].
   HtmlSelector? $(String selector) => this.selector.$(selector);
-
-  /// Find all elements matching the given CSS [selector].
   HtmlSelectionList $all(String selector) => this.selector.$all(selector);
-
-  /// Find a single element matching the given XPath [expression].
   HtmlSelector? $x(String expression) => selector.$x(expression);
-
-  /// Find all elements matching the given XPath [expression].
   HtmlSelectionList $xall(String expression) => selector.$xall(expression);
 }
 
-/// Helper for querying and extracting data from HTML elements.
+/// Wraps an HTML [Element] with query and extraction methods.
+///
+/// ```dart
+/// final node = res.$('.product');
+/// node?.text()              // trimmed text content
+/// node?.attr('id')          // attribute value
+/// node?.absurl('href')      // resolved absolute URL
+/// node?.$('span')?.text()   // nested query
+/// ```
 class HtmlSelector {
   final Element _element;
   final HtmlXPath _xpath;
+  final Uri? _baseUrl;
 
-  HtmlSelector._(this._element) : _xpath = HtmlXPath.node(_element);
+  HtmlSelector._(this._element, [this._baseUrl])
+    : _xpath = HtmlXPath.node(_element);
 
-  /// Creates a selector for an entire HTML [document].
-  factory HtmlSelector.document(Document document) {
-    final root = document.documentElement;
-    if (root == null) {
-      throw StateError('Parsed HTML document has no documentElement.');
-    }
-    return HtmlSelector._(root);
-  }
-
-  /// Creates a selector for a specific HTML [element].
-  factory HtmlSelector.element(Element element) => HtmlSelector._(element);
-
-  /// Find a single sub-element matching the CSS [selector].
   HtmlSelector? $(String selector) {
-    final element = _element.querySelector(selector);
-    return element == null ? null : HtmlSelector.element(element);
+    final el = _element.querySelector(selector);
+    return el == null ? null : HtmlSelector._(el, _baseUrl);
   }
 
-  /// Find all sub-elements matching the CSS [selector].
-  HtmlSelectionList $all(String selector) {
-    return HtmlSelectionList(
-      _element.querySelectorAll(selector).map(HtmlSelector.element).toList(),
-    );
-  }
+  HtmlSelectionList $all(String selector) => HtmlSelectionList(
+    _element
+        .querySelectorAll(selector)
+        .map((e) => HtmlSelector._(e, _baseUrl))
+        .toList(),
+  );
 
-  /// Find a single node matching the XPath [expression].
   HtmlSelector? $x(String expression) {
     final node = _xpath.query(expression).node?.node;
-    return node is Element ? HtmlSelector.element(node) : null;
+    return node is Element ? HtmlSelector._(node, _baseUrl) : null;
   }
 
-  /// Find all nodes matching the XPath [expression].
-  HtmlSelectionList $xall(String expression) {
-    final elements = _xpath
+  HtmlSelectionList $xall(String expression) => HtmlSelectionList(
+    _xpath
         .query(expression)
         .nodes
-        .map((match) => match.node)
+        .map((m) => m.node)
         .whereType<Element>()
-        .map(HtmlSelector.element)
-        .toList();
-    return HtmlSelectionList(elements);
-  }
+        .map((e) => HtmlSelector._(e, _baseUrl))
+        .toList(),
+  );
 
-  /// Transform the current element into another type using [fn].
+  /// Transform the current element using [fn].
   T map<T>(T Function(Element element) fn) => fn(_element);
 
-  /// Get the trimmed text content of the current element.
+  /// Trimmed text content.
   String text() => _element.text.trim();
 
-  /// Get the trimmed value of the attribute with the given [name].
+  /// Attribute value, or empty string if absent.
   String attr(String name) => (_element.attributes[name] ?? '').trim();
 
-  /// Get the inner HTML content of the current element.
-  String innner() => _element.innerHtml;
+  /// Resolves an attribute value as an absolute URL against the
+  /// response's base URL.
+  ///
+  /// ```dart
+  /// // res.url = 'https://example.com/books/'
+  /// node.absurl('href')  // 'page2' → 'https://example.com/books/page2'
+  /// node.absurl('src')   // '/img/a.png' → 'https://example.com/img/a.png'
+  /// ```
+  ///
+  /// Returns `null` if the attribute is absent or empty.
+  String? absurl(String name) {
+    final val = _element.attributes[name]?.trim();
+    if (val == null || val.isEmpty) return null;
+    final base = _baseUrl;
+    if (base != null) return base.resolve(val).toString();
+    return val;
+  }
 
-  /// Get the outer HTML content of the current element.
+  /// Inner HTML.
+  String inner() => _element.innerHtml;
+
+  /// Outer HTML.
   String outer() => _element.outerHtml;
 
-  /// Get the tag name of the current element.
+  /// Tag name.
   String tag() => _element.localName ?? '';
 }
 
-/// A list of [HtmlSelector]s, providing batch extraction methods.
-final class HtmlSelectionList {
+/// A list of [HtmlSelector]s with batch extraction and natural iteration.
+///
+/// ```dart
+/// for (final node in res.$all('.product')) {
+///   print(node.text());
+///   print(node.absurl('href'));
+/// }
+/// res.$all('.product')[0].$('a')?.text()
+/// ```
+final class HtmlSelectionList extends Iterable<HtmlSelector> {
   final List<HtmlSelector> _items;
-
-  /// Creates a new [HtmlSelectionList].
   const HtmlSelectionList(this._items);
 
-  /// The number of selected items.
-  int get length => _items.length;
+  @override
+  Iterator<HtmlSelector> get iterator => _items.iterator;
 
-  /// The underlying list of selectors.
+  HtmlSelector operator [](int index) => _items[index];
   List<HtmlSelector> get items => _items;
 
-  /// Transform each selected element using [fn].
-  List<T> map<T>(T Function(HtmlSelector) fn) => _items.map(fn).toList();
+  List<String> text() => [for (final e in _items) e.text()];
+  List<String> attr(String name) => [for (final e in _items) e.attr(name)];
 
-  /// Extract the trimmed text content of all selected elements.
-  List<String> text() => map((el) => el.text());
+  /// Resolve an attribute as absolute URLs for all elements.
+  List<String?> absurl(String name) => [for (final e in _items) e.absurl(name)];
 
-  /// Extract the trimmed value of the attribute [name] for all selected elements.
-  List<String> attr(String name) => map((element) => element.attr(name));
-
-  /// Extract the inner HTML content of all selected elements.
-  List<String> inner() => map((element) => element.innner());
-
-  /// Extract the outer HTML content of all selected elements.
-  List<String> outer() => map((element) => element.outer());
+  List<String> inner() => [for (final e in _items) e.inner()];
+  List<String> outer() => [for (final e in _items) e.outer()];
 }

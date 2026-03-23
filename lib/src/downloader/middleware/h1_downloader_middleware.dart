@@ -6,76 +6,92 @@ import 'package:flncrawly/src/response/response.dart';
 import 'package:flncrawly/src/response/text_response.dart';
 import 'package:http/http.dart' as http;
 
-/// A downloader middleware that performs the actual network request using http/v1.
-/// Usually placed at the end of the downloader middleware chain.
+/// HTTP/1.1 fetcher using `package:http`. Usually the last middleware in chain.
+///
+/// | Content-Type | Response Class |
+/// |--------------|----------------|
+/// | `text/html` | [HtmlResponse] |
+/// | `application/json` | [JsonResponse] |
+/// | `application/xml`, `text/xml` | [XmlResponse] |
+/// | other | [TextResponse] |
 class H1DownloaderMiddleware<Req extends Request, Res extends Response>
     extends DownloaderMiddleware<Req, Res> {
-  final http.Client _client = http.Client();
-  final Map<String, String> _cookies = {};
+  final http.Client _httpClient = http.Client();
+  final Map<String, String> _sessionCookies = {};
 
   H1DownloaderMiddleware();
 
-  void clearCookies() => _cookies.clear();
+  void clearCookies() => _sessionCookies.clear();
 
   @override
-  Future<DMResult<Req, Res>> processRequest(Req req) async {
+  Future<DMResult<Req, Res>> processRequest(Req request) async {
     try {
-      final res = await _fetch(req);
-      return DMResult.response(res);
+      final response = await _executeRequest(request);
+      return DMResult.respond(response);
     } catch (e, s) {
-      return DMResult.error(e, s);
+      return DMResult.fail(e, s);
     }
   }
 
-  Future<Res> _fetch(Req req) async {
-    final hreq = http.Request(req.method, req.url);
-    hreq.headers.addAll(req.headers);
-    final cookies = {..._cookies, ...req.cookies};
-    if (cookies.isNotEmpty) {
-      hreq.headers['Cookie'] = cookies.entries
+  Future<Res> _executeRequest(Req request) async {
+    final httpRequest = http.Request(request.method, request.url);
+    httpRequest.headers.addAll(request.headers);
+
+    final mergedCookies = {..._sessionCookies, ...request.cookies};
+    if (mergedCookies.isNotEmpty) {
+      httpRequest.headers['Cookie'] = mergedCookies.entries
           .map((e) => '${e.key}=${e.value}')
           .join('; ');
     }
-    if (req.encoding != null) {
-      final codec = Encoding.getByName(req.encoding!);
-      if (codec != null) hreq.encoding = codec;
-    }
-    if (req.body != null) hreq.bodyBytes = req.body!;
 
-    final sres = await _client.send(hreq);
-    final res = await http.Response.fromStream(sres);
-    if (res.headers['set-cookie'] != null) {
-      _updateCookies(res.headers['set-cookie']!);
+    if (request.encoding != null) {
+      final codec = Encoding.getByName(request.encoding!);
+      if (codec != null) httpRequest.encoding = codec;
     }
-    final contentType = (res.headers['content-type'] ?? '').toLowerCase();
-    final url = req.url, status = res.statusCode, headers = res.headers;
-    final body = res.bodyBytes, meta = req.meta;
-    final tres = TextResponse(
-      url: url,
-      status: status,
-      headers: headers,
-      body: body,
-      request: req,
-      meta: meta,
+    if (request.body != null) httpRequest.bodyBytes = request.body!;
+
+    final streamedResponse = await _httpClient.send(httpRequest);
+    final httpResponse = await http.Response.fromStream(streamedResponse);
+
+    if (httpResponse.headers['set-cookie'] != null) {
+      _parseCookieHeader(httpResponse.headers['set-cookie']!);
+    }
+
+    final contentType = (httpResponse.headers['content-type'] ?? '')
+        .split(';')
+        .first
+        .trim()
+        .toLowerCase();
+
+    final textResponse = TextResponse(
+      url: request.url,
+      status: httpResponse.statusCode,
+      headers: httpResponse.headers,
+      body: httpResponse.bodyBytes,
+      request: request,
+      meta: request.meta,
     );
+
     return switch (contentType) {
-          'application/json' => tres.json,
-          'application/xml' => tres.xml,
-          'text/html' => tres.html,
-          _ => tres,
+          'application/json' => textResponse.json,
+          'application/xml' || 'text/xml' => textResponse.xml,
+          'text/html' => textResponse.html,
+          _ => textResponse,
         }
         as Res;
   }
 
-  void _updateCookies(String sc) {
-    for (final p in sc.split(',')) {
-      final nv = p.split(';').first.trim();
-      final nvLower = nv.toLowerCase();
-      final i = nvLower.indexOf('=');
-      if (i != -1) _cookies[nv.substring(0, i)] = nv.substring(i + 1);
+  void _parseCookieHeader(String setCookieHeader) {
+    for (final part in setCookieHeader.split(',')) {
+      final nameValue = part.split(';').first.trim();
+      final equalsIndex = nameValue.indexOf('=');
+      if (equalsIndex != -1) {
+        _sessionCookies[nameValue.substring(0, equalsIndex)] =
+            nameValue.substring(equalsIndex + 1);
+      }
     }
   }
 
   @override
-  void close() => _client.close();
+  void close() => _httpClient.close();
 }

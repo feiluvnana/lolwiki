@@ -3,78 +3,88 @@ import 'package:flncrawly/src/downloader/middleware/downloader_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// The engine for downloading requests via a chain of middlewares.
+/// Runs requests through a chain of [DownloaderMiddleware]s.
+///
+/// ```
+/// Request → [MW₁.processRequest] → [MW₂.processRequest] → ... → Network
+///                                                                    ↓
+/// Engine ← [MW₁.processResponse] ← [MW₂.processResponse] ← ... ← Response
+/// ```
 class Downloader<T, Req extends Request, Res extends Response> {
   late final Engine<T, Req, Res> engine;
   final List<DownloaderMiddleware<Req, Res>> middlewares;
 
   Downloader({this.middlewares = const []});
 
-  Future<DMResult<Req, Res>> handle(Req req) async {
-    var curReq = req;
+  Future<DMResult<Req, Res>> fetch(Req request) async {
+    var currentRequest = request;
     for (var i = 0; i < middlewares.length; i++) {
       try {
-        final res = await middlewares[i].processRequest(curReq);
-        switch (res) {
-          case NextRequest(:final request):
-            curReq = request;
-          case ProxyResponse(:final response):
-            return _handleRes(curReq, response, i);
-          case RescheduleRequest() || ReportError() || IgnoreResult():
-            return res;
+        final result = await middlewares[i].processRequest(currentRequest);
+        switch (result) {
+          case ContinueChain(:final request):
+            currentRequest = request;
+          case ForwardResponse(:final response):
+            return _processResponseChain(currentRequest, response, i);
+          case RescheduleRequest() || ReportError() || DropRequest():
+            return result;
         }
       } catch (e) {
-        return _handleErr(curReq, e, i);
+        return _processExceptionChain(currentRequest, e, i);
       }
     }
-    return DMResult.error(StateError('No fetcher handled ${curReq.url}'));
+    return DMResult.fail(StateError('No middleware fetched ${currentRequest.url}'));
   }
 
-  Future<DMResult<Req, Res>> _handleRes(Req r, Res res, int si) async {
-    var curRes = res;
-    for (var i = si; i >= 0; i--) {
+  Future<DMResult<Req, Res>> _processResponseChain(
+    Req request, Res response, int fromIndex,
+  ) async {
+    var currentResponse = response;
+    for (var i = fromIndex; i >= 0; i--) {
       try {
-        final reslt = await middlewares[i].processResponse(r, curRes);
-        switch (reslt) {
-          case ProxyResponse(:final response):
-            curRes = response;
-          case RescheduleRequest() || ReportError() || IgnoreResult():
-            return reslt;
-          case NextRequest():
-            throw StateError('Downloader: Invalid response yield');
+        final result = await middlewares[i].processResponse(request, currentResponse);
+        switch (result) {
+          case ForwardResponse(:final response):
+            currentResponse = response;
+          case RescheduleRequest() || ReportError() || DropRequest():
+            return result;
+          case ContinueChain():
+            throw StateError('processResponse cannot return continueWith');
         }
       } catch (e) {
-        return _handleErr(r, e, i - 1);
+        return _processExceptionChain(request, e, i - 1);
       }
     }
-    return DMResult.response(curRes);
+    return DMResult.respond(currentResponse);
   }
 
-  Future<DMResult<Req, Res>> _handleErr(Req r, Object e, int si) async {
-    var curErr = e;
-    for (var i = si; i >= 0; i--) {
+  Future<DMResult<Req, Res>> _processExceptionChain(
+    Req request, Object error, int fromIndex,
+  ) async {
+    var currentError = error;
+    for (var i = fromIndex; i >= 0; i--) {
       try {
-        final reslt = await middlewares[i].processException(r, curErr);
-        switch (reslt) {
+        final result = await middlewares[i].processException(request, currentError);
+        switch (result) {
           case ReportError(:final error):
-            curErr = error;
-          case ProxyResponse(:final response):
-            return _handleRes(r, response, i - 1);
-          case RescheduleRequest() || IgnoreResult():
-            return reslt;
-          case NextRequest():
-            throw StateError('Downloader: Invalid error yield');
+            currentError = error;
+          case ForwardResponse(:final response):
+            return _processResponseChain(request, response, i - 1);
+          case RescheduleRequest() || DropRequest():
+            return result;
+          case ContinueChain():
+            throw StateError('processException cannot return continueWith');
         }
       } catch (e) {
-        curErr = e;
+        currentError = e;
       }
     }
-    return DMResult.error(curErr);
+    return DMResult.fail(currentError);
   }
 
   void close() {
-    for (var m in middlewares) {
-      m.close();
+    for (var middleware in middlewares) {
+      middleware.close();
     }
   }
 }

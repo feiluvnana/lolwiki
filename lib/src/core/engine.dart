@@ -8,14 +8,23 @@ import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// The central orchestrator that drives the entire crawling lifecycle.
+/// Orchestrates [Dispatcher], [Downloader], [Processor], and [Pipeline]s.
+///
+/// ```
+/// [Processor.startRequests] → [Dispatcher] → [Downloader] → [Processor.process]
+///                                                                 ↓
+///                                                  Result.item   → [Pipeline]s
+///                                                  Result.follow → [Dispatcher]
+///                                                  Result.retry  → [Dispatcher]
+/// ```
 class Engine<T, Req extends Request, Res extends Response> {
   final Dispatcher<Req> dispatcher;
   final Downloader<T, Req, Res> downloader;
   final Processor<T, Req, Res> processor;
   final List<Pipeline<T>> pipelines;
-  void Function(String msg) log = print;
-  final Stats stats = Stats();
+  void Function(String message) log = print;
+  final CrawlStats stats = CrawlStats();
+  bool _closed = false;
 
   Engine({
     required this.dispatcher,
@@ -26,27 +35,30 @@ class Engine<T, Req extends Request, Res extends Response> {
     dispatcher.engine = this;
     downloader.engine = this;
     processor.engine = this;
-    for (var p in pipelines) {
-      p.engine = this;
+    for (var pipeline in pipelines) {
+      pipeline.engine = this;
     }
   }
 
-  final List<Future<void>> _active = [];
+  final List<Future<void>> _runningTasks = [];
 
-  Future<void> start({List<Req> startRequest = const []}) async {
-    stats.start = DateTime.now();
-    log('Starting crawl with ${startRequest.length} seeds');
-    final done = dispatcher.requests.forEach((req) {
-      final task = _run(req);
-      _active.add(task);
-      task.whenComplete(() => _active.remove(task));
+  Future<void> start() async {
+    stats.startTime = DateTime.now();
+    log('Starting crawl with ${processor.startRequests.length} requests');
+
+    final streamDone = dispatcher.requestStream.forEach((request) {
+      final task = _downloadAndProcess(request);
+      _runningTasks.add(task);
+      task.whenComplete(() => _runningTasks.remove(task));
     });
-    for (final s in startRequest) {
-      dispatcher.push(s);
+
+    for (final request in processor.startRequests) {
+      dispatcher.enqueue(request);
     }
+
     try {
-      await done;
-      await Future.wait(_active);
+      await streamDone;
+      await Future.wait(_runningTasks);
     } finally {
       close();
     }
@@ -54,84 +66,92 @@ class Engine<T, Req extends Request, Res extends Response> {
 
   void stop() => dispatcher.close();
 
+  /// Idempotent — safe to call multiple times.
   void close() {
+    if (_closed) return;
+    _closed = true;
     dispatcher.close();
     downloader.close();
     processor.close();
-    for (var p in pipelines) {
-      p.close();
+    for (var pipeline in pipelines) {
+      pipeline.close();
     }
-    stats.end = DateTime.now();
+    stats.endTime = DateTime.now();
     log('Engine stopped. $stats');
   }
 
-  Future<void> _run(Req req) async {
-    stats.requests++;
+  Future<void> _downloadAndProcess(Req request) async {
+    stats.totalRequests++;
     try {
-      final r = await downloader.handle(req);
-      switch (r) {
-        case ProxyResponse(response: Res res):
-          stats.successes++;
-          await for (final reslt in processor.handle(res)) {
-            await _handleResult(reslt);
+      final downloadResult = await downloader.fetch(request);
+      switch (downloadResult) {
+        case ForwardResponse(response: Res response):
+          stats.successCount++;
+          await for (final result in processor.handleResponse(response)) {
+            await _routeResult(result);
           }
-        case RescheduleRequest(request: Req r):
-          stats.rescheduled++;
-          dispatcher.push(r);
+        case RescheduleRequest(request: Req rescheduled):
+          stats.rescheduledCount++;
+          dispatcher.enqueue(rescheduled);
         case ReportError(:final error, :final stackTrace):
-          stats.failures++;
-          log('Downloader Error: $error');
+          stats.failureCount++;
+          log('Download Error: $error');
           if (stackTrace != null) log(stackTrace.toString());
-        case IgnoreResult():
-          stats.ignored++;
-          return;
-        case NextRequest():
-          throw StateError('Downloader: Invalid return');
+        case DropRequest():
+          stats.droppedCount++;
+        case ContinueChain():
+          throw StateError('Downloader returned ContinueChain — misconfigured');
       }
     } catch (e, s) {
-      stats.failures++;
-      log('Engine Failure: $e\n$s');
+      stats.failureCount++;
+      log('Engine Error: $e\n$s');
     } finally {
-      dispatcher.complete(req);
+      dispatcher.complete(request);
     }
   }
 
-  Future<void> _handleResult(PMResult<T, Req> r) async {
-    switch (r) {
-      case Item<T, Req>(:final item):
-        stats.items++;
-        T? cur = item;
-        for (final p in pipelines) {
-          if (cur == null) break;
-          cur = await p.handle(cur);
+  Future<void> _routeResult(Result<T, Req> result) async {
+    switch (result) {
+      case ItemResult<T, Req>(:final item):
+        stats.itemCount++;
+        T? current = item;
+        for (final pipeline in pipelines) {
+          if (current == null) break;
+          try {
+            current = await pipeline.handle(current);
+          } catch (e) {
+            log('Pipeline Error: $e');
+            current = null;
+          }
         }
-      case Follow<T, Req>(:final request):
-        stats.followed++;
-        dispatcher.push(request);
-      case Retry<T, Req>(:final request):
-        stats.retries++;
+      case FollowResult<T, Req>(:final request):
+        stats.followedCount++;
+        dispatcher.enqueue(request);
+      case RetryResult<T, Req>(:final request):
+        stats.retryCount++;
         dispatcher.retry(request);
-      case Error<T, Req>(:final error, :final stackTrace):
-        stats.failures++;
-        log('Processor Result Error: $error');
+      case ErrorResult<T, Req>(:final error, :final stackTrace):
+        stats.failureCount++;
+        log('Process Error: $error');
         if (stackTrace != null) log(stackTrace.toString());
-      case Finish<T, Req>():
+      case FinishResult<T, Req>():
         dispatcher.close();
     }
   }
 }
 
-class Stats {
-  int requests = 0, successes = 0, failures = 0, items = 0;
-  int retries = 0, followed = 0, ignored = 0, rescheduled = 0;
+class CrawlStats {
+  int totalRequests = 0, successCount = 0, failureCount = 0, itemCount = 0;
+  int retryCount = 0, followedCount = 0, droppedCount = 0, rescheduledCount = 0;
+  DateTime? startTime, endTime;
 
-  DateTime? start, end;
   Duration? get duration =>
-      (start != null && end != null) ? end!.difference(start!) : null;
+      (startTime != null && endTime != null) ? endTime!.difference(startTime!) : null;
 
   @override
   String toString() =>
-      'Stats(reqs: $requests, ok: $successes, fail: $failures, items: $items, '
-      'retries: $retries, followed: $followed, ignored: $ignored, rescheduled: $rescheduled, '
-      'time: ${duration?.inSeconds}s)';
+      'CrawlStats(requests: $totalRequests, success: $successCount, '
+      'failures: $failureCount, items: $itemCount, retries: $retryCount, '
+      'followed: $followedCount, dropped: $droppedCount, '
+      'rescheduled: $rescheduledCount, time: ${duration?.inSeconds}s)';
 }

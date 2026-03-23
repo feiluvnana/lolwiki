@@ -4,7 +4,12 @@ import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Defines an interceptor for response processing and extraction.
+/// Intercepts responses before/after the [Processor].
+///
+/// ```
+/// [onInput]  (Top→Bottom) → [Processor.process] → [onOutput] (Bottom→Top)
+///                                                   [onError]  (Bottom→Top)
+/// ```
 abstract class ProcessorMiddleware<
   T,
   Req extends Request,
@@ -12,17 +17,15 @@ abstract class ProcessorMiddleware<
 > {
   const ProcessorMiddleware();
 
-  /// Modifies or passes through the [Res] (Top-to-Bottom).
-  Future<Res> onInput(Res res) async => res;
+  Future<Res> onInput(Res response) async => response;
 
-  /// Transformation following extraction (Bottom-to-Top).
-  Stream<PMResult<T, Req>> onOutput(
-    Res res,
-    Stream<PMResult<T, Req>> results,
+  Stream<Result<T, Req>> onOutput(
+    Res response,
+    Stream<Result<T, Req>> results,
   ) => results;
 
-  /// Recovery which returns a replacement stream (Bottom-to-Top).
-  Stream<PMResult<T, Req>>? onError(Res res, Object error) => null;
+  /// Return a recovery stream, or `null` to propagate the error.
+  Stream<Result<T, Req>>? onError(Res response, Object error) => null;
 
   void close() {}
 }

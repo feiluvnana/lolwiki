@@ -1,4 +1,20 @@
-/// A collection of common browser User-Agent strings.
+/// A collection of common browser User-Agent strings for request rotation.
+///
+/// Use [random] to get a random User-Agent, or pick a specific one:
+///
+/// ```dart
+/// // Random rotation (default for UserAgentMiddleware)
+/// final ua = UserAgents.random();
+///
+/// // Specific browser
+/// final ua = UserAgents.windowsChrome;
+///
+/// // In a request
+/// Request(
+///   url: Uri.parse('https://example.com'),
+///   headers: {'User-Agent': UserAgents.random()},
+/// );
+/// ```
 abstract final class UserAgents {
   /// Chrome on Windows
   static const String windowsChrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';

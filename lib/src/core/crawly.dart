@@ -10,60 +10,53 @@ import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// A fluent builder for configuring and running a crawl.
+/// Fluent builder for configuring and launching a crawl.
+///
+/// ```dart
+/// await Crawly(BookProcessor())
+///     .downloadWith(DelayMiddleware(Duration(milliseconds: 500)))
+///     .downloadWith(RetryMiddleware())
+///     .downloadWith(UserAgentMiddleware())
+///     .processWith(DepthMiddleware(maxDepth: 3))
+///     .pipeWith(LogPipeline('📦 '))
+///     .crawl();
+/// ```
 class Crawly<T, Req extends Request, Res extends Response> {
   final Processor<T, Req, Res> _processor;
   Dispatcher<Req>? _dispatcher;
   Downloader<T, Req, Res>? _downloader;
-  final List<DownloaderMiddleware<Req, Res>> _downloaderMiddlewares = [];
+  final List<DownloaderMiddleware<Req, Res>> _downloadMiddlewares = [];
   final List<Pipeline<T>> _pipelines = [];
 
   Crawly(this._processor);
 
-  static Crawly<T, Req, Res> withProcessor<
-    T,
-    Req extends Request,
-    Res extends Response
-  >(Processor<T, Req, Res> p) => Crawly<T, Req, Res>(p);
-
-  Crawly<T, Req, Res> withScheduler(Dispatcher<Req> d) {
-    _dispatcher = d;
+  Crawly<T, Req, Res> setDispatcher(Dispatcher<Req> dispatcher) {
+    _dispatcher = dispatcher;
     return this;
   }
 
-  Crawly<T, Req, Res> withDownloader(Downloader<T, Req, Res> d) {
-    _downloader = d;
+  Crawly<T, Req, Res> setDownloader(Downloader<T, Req, Res> downloader) {
+    _downloader = downloader;
     return this;
   }
 
-  Crawly<T, Req, Res> addDownloaderMiddleware(
-    DownloaderMiddleware<Req, Res> m,
-  ) {
-    _downloaderMiddlewares.add(m);
+  Crawly<T, Req, Res> downloadWith(DownloaderMiddleware<Req, Res> middleware) {
+    _downloadMiddlewares.add(middleware);
     return this;
   }
 
-  Crawly<T, Req, Res> addProcessorMiddleware(
-    ProcessorMiddleware<T, Req, Res> m,
-  ) {
-    _processor.middlewares.add(m);
+  Crawly<T, Req, Res> processWith(ProcessorMiddleware<T, Req, Res> middleware) {
+    _processor.middlewares.add(middleware);
     return this;
   }
 
-  Crawly<T, Req, Res> addProcessorMiddlewares(
-    List<ProcessorMiddleware<T, Req, Res>> mws,
-  ) {
-    _processor.middlewares.addAll(mws);
+  Crawly<T, Req, Res> pipeWith(Pipeline<T> pipeline) {
+    _pipelines.add(pipeline);
     return this;
   }
 
-  Crawly<T, Req, Res> addPipeline(Pipeline<T> p) {
-    _pipelines.add(p);
-    return this;
-  }
-
-  Crawly<T, Req, Res> addPipelines(List<Pipeline<T>> ps) {
-    _pipelines.addAll(ps);
+  Crawly<T, Req, Res> pipeWithAll(List<Pipeline<T>> pipelines) {
+    _pipelines.addAll(pipelines);
     return this;
   }
 
@@ -71,9 +64,8 @@ class Crawly<T, Req extends Request, Res extends Response> {
     final downloader =
         _downloader ??
         Downloader<T, Req, Res>(
-          middlewares: [..._downloaderMiddlewares, H1DownloaderMiddleware()],
+          middlewares: [..._downloadMiddlewares, H1DownloaderMiddleware()],
         );
-
     return Engine<T, Req, Res>(
       dispatcher: _dispatcher ?? PriorityDispatcher<Req>(),
       downloader: downloader,
@@ -82,6 +74,5 @@ class Crawly<T, Req extends Request, Res extends Response> {
     );
   }
 
-  Future<void> run({List<Req> seeds = const []}) async =>
-      build().start(startRequest: seeds);
+  Future<void> crawl() async => build().start();
 }
