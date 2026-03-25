@@ -6,16 +6,8 @@ import 'package:flncrawly/src/response/response.dart';
 import 'package:flncrawly/src/response/text_response.dart';
 import 'package:http/http.dart' as http;
 
-/// HTTP/1.1 fetcher using `package:http`. Usually the last middleware in chain.
-///
-/// | Content-Type | Response Class |
-/// |--------------|----------------|
-/// | `text/html` | [HtmlResponse] |
-/// | `application/json` | [JsonResponse] |
-/// | `application/xml`, `text/xml` | [XmlResponse] |
-/// | other | [TextResponse] |
-class H1DownloaderMiddleware<Req extends Request, Res extends Response>
-    extends DownloaderMiddleware<Req, Res> {
+/// Fetches via HTTP/1.1 with cookie support.
+class H1DownloaderMiddleware<Req extends Request, Res extends Response> extends DownloaderMiddleware<Req, Res> {
   final http.Client _httpClient = http.Client();
   final Map<String, String> _sessionCookies = {};
 
@@ -39,9 +31,7 @@ class H1DownloaderMiddleware<Req extends Request, Res extends Response>
 
     final mergedCookies = {..._sessionCookies, ...request.cookies};
     if (mergedCookies.isNotEmpty) {
-      httpRequest.headers['Cookie'] = mergedCookies.entries
-          .map((e) => '${e.key}=${e.value}')
-          .join('; ');
+      httpRequest.headers['Cookie'] = mergedCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
     }
 
     if (request.encoding != null) {
@@ -57,11 +47,7 @@ class H1DownloaderMiddleware<Req extends Request, Res extends Response>
       _parseCookieHeader(httpResponse.headers['set-cookie']!);
     }
 
-    final contentType = (httpResponse.headers['content-type'] ?? '')
-        .split(';')
-        .first
-        .trim()
-        .toLowerCase();
+    final contentType = (httpResponse.headers['content-type'] ?? '').split(';').first.trim().toLowerCase();
 
     final textResponse = TextResponse(
       url: request.url,
@@ -86,8 +72,7 @@ class H1DownloaderMiddleware<Req extends Request, Res extends Response>
       final nameValue = part.split(';').first.trim();
       final equalsIndex = nameValue.indexOf('=');
       if (equalsIndex != -1) {
-        _sessionCookies[nameValue.substring(0, equalsIndex)] =
-            nameValue.substring(equalsIndex + 1);
+        _sessionCookies[nameValue.substring(0, equalsIndex)] = nameValue.substring(equalsIndex + 1);
       }
     }
   }

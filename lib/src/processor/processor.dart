@@ -12,14 +12,14 @@ import 'package:flncrawly/src/response/response.dart';
 /// yield Result.follow(res.follow('/next'));
 /// yield Result.finish();
 /// ```
+/// Defines extraction logic.
 sealed class Result<T, Req extends Request> {
   const Result();
   factory Result.item(T item) = ItemResult<T, Req>;
   factory Result.follow(Req request) = FollowResult<T, Req>;
   factory Result.finish() = FinishResult<T, Req>;
   factory Result.retry(Req request) = RetryResult<T, Req>;
-  factory Result.error(Object error, [StackTrace? stackTrace]) =
-      ErrorResult<T, Req>;
+  factory Result.error(Object error, [StackTrace? stackTrace]) = ErrorResult<T, Req>;
 }
 
 class ItemResult<T, Req extends Request> extends Result<T, Req> {
@@ -47,28 +47,6 @@ class ErrorResult<T, Req extends Request> extends Result<T, Req> {
   ErrorResult(this.error, [this.stackTrace]);
 }
 
-/// Defines **where** to start and **how** to extract data.
-///
-/// ```dart
-/// class BookProcessor extends Processor<Book, Request, HtmlResponse> {
-///   @override
-///   List<Request> get startRequests => [
-///     Request.to('https://books.toscrape.com/')
-///   ];
-///
-///   @override
-///   Stream<Result<Book, Request>> process(HtmlResponse response) async* {
-///     for (final node in response.$all('.product_pod')) {
-///       yield Result.item(Book(
-///         title: node.$('h3 a')?.attr('title') ?? '',
-///         price: node.$('.price_color')?.text() ?? '',
-///       ));
-///     }
-///     final next = response.$('.next a')?.attr('href');
-///     if (next != null) yield Result.follow(response.follow(next));
-///   }
-/// }
-/// ```
 abstract class Processor<T, Req extends Request, Res extends Response> {
   late final Engine<T, Req, Res> engine;
   final List<ProcessorMiddleware<T, Req, Res>> middlewares = [];

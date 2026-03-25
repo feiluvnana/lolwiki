@@ -1,29 +1,18 @@
-/// 🕸️ flncrawly — A fluent web crawling framework for Dart.
+/// 🕸️ flncrawly — Compact, fluent web crawling for Dart.
 ///
 /// ```dart
-/// import 'package:flncrawly/flncrawly.dart';
-///
 /// class MyProcessor extends Processor<String, Request, HtmlResponse> {
 ///   @override
-///   List<Request> get startRequests => [
-///     Request.to('https://example.com')
-///   ];
+///   List<Request> get startRequests => [Request.to('https://example.com')];
+///
 ///   @override
 ///   Stream<Result<String, Request>> process(HtmlResponse res) async* {
-///     yield Result.item(res.$('title')?.text() ?? '');
+///     yield Result.item(res.$('title').one()?.text() ?? '');
 ///   }
 /// }
 ///
 /// void main() async => await Crawly(MyProcessor()).pipeWith(LogPipeline()).crawl();
 /// ```
-///
-/// ### Core Concepts
-/// - [Processor]: Where to start and how to extract data
-/// - [Result]: What to do with extracted data (item, follow, retry, finish)
-/// - [Crawly]: Fluent builder for configuring and launching crawls
-/// - [Pipeline]: Process, validate, or store extracted items
-/// - [DownloaderMiddleware]: Intercept requests/responses
-/// - [ProcessorMiddleware]: Intercept processing
 library;
 
 export 'src/core/crawly.dart';

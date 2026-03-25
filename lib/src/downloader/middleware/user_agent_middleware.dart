@@ -3,9 +3,8 @@ import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/request/user_agents.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Sets a `User-Agent` header on requests that don't already have one.
-class UserAgentMiddleware<Req extends Request, Res extends Response>
-    extends DownloaderMiddleware<Req, Res> {
+/// Sets a `User-Agent` if missing.
+class UserAgentMiddleware<Req extends Request, Res extends Response> extends DownloaderMiddleware<Req, Res> {
   final String? fixedUserAgent;
   UserAgentMiddleware({this.fixedUserAgent});
 

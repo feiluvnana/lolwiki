@@ -10,16 +10,9 @@ import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Fluent builder for configuring and launching a crawl.
-///
+/// Configures and launches a crawl.
 /// ```dart
-/// await Crawly(BookProcessor())
-///     .downloadWith(DelayMiddleware(Duration(milliseconds: 500)))
-///     .downloadWith(RetryMiddleware())
-///     .downloadWith(UserAgentMiddleware())
-///     .processWith(DepthMiddleware(maxDepth: 3))
-///     .pipeWith(LogPipeline('📦 '))
-///     .crawl();
+/// await Crawly(MyProcessor()).downloadWith(RetryMiddleware()).crawl();
 /// ```
 class Crawly<T, Req extends Request, Res extends Response> {
   final Processor<T, Req, Res> _processor;
@@ -62,10 +55,7 @@ class Crawly<T, Req extends Request, Res extends Response> {
 
   Engine<T, Req, Res> build() {
     final downloader =
-        _downloader ??
-        Downloader<T, Req, Res>(
-          middlewares: [..._downloadMiddlewares, H1DownloaderMiddleware()],
-        );
+        _downloader ?? Downloader<T, Req, Res>(middlewares: [..._downloadMiddlewares, H1DownloaderMiddleware()]);
     return Engine<T, Req, Res>(
       dispatcher: _dispatcher ?? PriorityDispatcher<Req>(),
       downloader: downloader,

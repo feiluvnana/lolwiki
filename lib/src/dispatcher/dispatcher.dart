@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flncrawly/src/core/engine.dart';
 import 'package:flncrawly/src/request/request.dart';
 
-/// Controls request scheduling, deduplication, and concurrency.
+/// Schedules and deduplicates requests.
 abstract class Dispatcher<Req extends Request> {
   late final Engine engine;
 
+  /// Stream of scheduler events.
   Stream<DispatcherEvent<Req>> get eventStream;
+
+  /// Stream of ready requests.
   Stream<Req> get requestStream;
 
   void enqueue(Req request);
@@ -16,8 +19,10 @@ abstract class Dispatcher<Req extends Request> {
   void close();
 }
 
+/// Dispatcher status events.
 enum DispatcherEventType { enqueued, dispatched, retrying, completed }
 
+/// Recorded scheduler event.
 class DispatcherEvent<Req extends Request> {
   final DispatcherEventType type;
   final Req request;

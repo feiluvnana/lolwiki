@@ -1,6 +1,6 @@
 import 'package:flncrawly/src/pipeline/pipeline.dart';
 
-/// Delegates handling to a function — quick one-off pipelines.
+/// Functional one-off pipeline.
 class FunctionalPipeline<T> extends Pipeline<T> {
   final Future<T?> Function(T item) _handler;
   final void Function()? _onClose;

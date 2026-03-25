@@ -2,17 +2,9 @@ import 'package:flncrawly/src/response/text_response.dart';
 import 'package:xml/xml.dart';
 import 'package:xml/xpath.dart';
 
-/// A response containing XML content with XPath query capabilities.
-///
-/// ```dart
-/// final title = res.$x('//title')?.text();
-/// final items = res.$xall('//item/name').text();
-/// final id = res.$x('//product')?.attr('id');
-/// ```
+/// Response with XPath selection.
 class XmlResponse extends TextResponse {
-  late final XmlDocument _doc = XmlDocument.parse(text);
-
-  XmlResponse({
+  const XmlResponse({
     required super.url,
     required super.status,
     required super.headers,
@@ -21,59 +13,62 @@ class XmlResponse extends TextResponse {
     required super.meta,
   });
 
-  XmlSelector get selector => XmlSelector.document(_doc);
-  XmlSelector? $x(String expression) => selector.$x(expression);
-  XmlSelectionList $xall(String expression) => selector.$xall(expression);
+  XmlSelector get selector => XmlSelector._(XmlDocument.parse(text), []);
+  XmlSelector $x(String expr) => selector.$x(expr);
+  XmlSelection? one() => selector.one();
+  XmlSelections all() => selector.all();
 }
 
-/// Wraps an XML [XmlNode] with query and extraction methods.
 class XmlSelector {
-  final XmlNode _node;
-  XmlSelector._(this._node);
+  final XmlNode node;
+  final List<String> selectors;
 
-  factory XmlSelector.document(XmlDocument document) => XmlSelector._(document);
-  factory XmlSelector.node(XmlNode node) => XmlSelector._(node);
+  const XmlSelector._(this.node, this.selectors);
 
-  XmlSelector? $x(String expression) {
-    // ignore: experimental_member_use
-    final match = _node.xpath(expression);
-    return match.isEmpty ? null : XmlSelector.node(match.first);
+  XmlSelector $x(String expr) {
+    return XmlSelector._(node, selectors + [expr]);
   }
 
-  XmlSelectionList $xall(String expression) => XmlSelectionList(
-    // ignore: experimental_member_use
-    _node.xpath(expression).map(XmlSelector.node).toList(),
-  );
+  XmlSelection? one() {
+    XmlNode? current = node;
+    for (final expr in selectors) {
+      // ignore: experimental_member_use
+      final match = current?.xpath(expr);
+      if (match == null || match.isEmpty) return null;
+      current = match.first;
+    }
+    return XmlSelection._(current!);
+  }
 
-  T map<T>(T Function(XmlNode node) fn) => fn(_node);
-  String text() => _node.innerText.trim();
-  String xml() => _node.toXmlString();
-
-  String attr(String name) {
-    final node = _node;
-    return node is XmlElement ? node.getAttribute(name)?.trim() ?? '' : '';
+  XmlSelections all() {
+    Iterable<XmlNode> current = [node];
+    for (final expr in selectors) {
+      // ignore: experimental_member_use
+      current = current.expand((n) => n.xpath(expr));
+    }
+    return XmlSelections._(current.toList());
   }
 }
 
-/// A list of [XmlSelector]s with batch extraction and natural iteration.
-///
-/// ```dart
-/// for (final node in res.$xall('//item')) {
-///   print(node.text());
-/// }
-/// res.$xall('//item')[0].attr('id')
-/// ```
-final class XmlSelectionList extends Iterable<XmlSelector> {
-  final List<XmlSelector> _items;
-  const XmlSelectionList(this._items);
+final class XmlSelection {
+  final XmlNode node;
+  const XmlSelection._(this.node);
+
+  XmlSelector $x(String expr) => XmlSelector._(node, [expr]);
+
+  String text() => node.innerText.trim();
+  String attr(String name) => node is XmlElement ? (node as XmlElement).getAttribute(name)?.trim() ?? '' : '';
+  String xml() => node.toXmlString();
+}
+
+final class XmlSelections extends Iterable<XmlSelection> {
+  final List<XmlNode> _nodes;
+  const XmlSelections._(this._nodes);
 
   @override
-  Iterator<XmlSelector> get iterator => _items.iterator;
+  Iterator<XmlSelection> get iterator => _nodes.map((n) => XmlSelection._(n)).iterator;
 
-  XmlSelector operator [](int index) => _items[index];
-  List<XmlSelector> get items => _items;
-
-  List<String> text() => [for (final e in _items) e.text()];
-  List<String> xml() => [for (final e in _items) e.xml()];
-  List<String> attr(String name) => [for (final e in _items) e.attr(name)];
+  List<String> text() => map((e) => e.text()).toList();
+  List<String> attr(String name) => map((e) => e.attr(name)).toList();
+  List<String> xml() => map((e) => e.xml()).toList();
 }

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "http",
+    "url": "https://pub.dev/packages/http",
+    "description": "A composable, multi-platform, Future-based API for HTTP requests.#http#network#protocols"
+  },
+  {
+    "name": "dio",
+    "url": "https://pub.dev/packages/dio",
+    "description": "A powerful HTTP networking package,\nsupports Interceptors,\nAborting and canceling a request,\nCustom adapters, Transformers, etc.\n#dio#http#network#interceptor#middleware"
+  },
+  {
+    "name": "google_fonts",
+    "url": "https://pub.dev/packages/google_fonts",
+    "description": "A Flutter package to use fonts from fonts.google.com. Supports HTTP fetching, caching, and asset bundling.#font#fonts"
+  },
+  {
+    "name": "retry",
+    "url": "https://pub.dev/packages/retry",
+    "description": "Utility for wrapping an asynchronous function in automatic retry logic with exponential back-off, useful when making requests over network.#network#http"
+  },
+  {
+    "name": "http_parser",
+    "url": "https://pub.dev/packages/http_parser",
+    "description": "A platform-independent package for parsing and serializing HTTP formats."
+  }
+]

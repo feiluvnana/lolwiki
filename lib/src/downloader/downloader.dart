@@ -3,13 +3,7 @@ import 'package:flncrawly/src/downloader/middleware/downloader_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Runs requests through a chain of [DownloaderMiddleware]s.
-///
-/// ```
-/// Request → [MW₁.processRequest] → [MW₂.processRequest] → ... → Network
-///                                                                    ↓
-/// Engine ← [MW₁.processResponse] ← [MW₂.processResponse] ← ... ← Response
-/// ```
+/// Fetches requests via a chain of [DownloaderMiddleware]s.
 class Downloader<T, Req extends Request, Res extends Response> {
   late final Engine<T, Req, Res> engine;
   final List<DownloaderMiddleware<Req, Res>> middlewares;
@@ -36,9 +30,7 @@ class Downloader<T, Req extends Request, Res extends Response> {
     return DMResult.fail(StateError('No middleware fetched ${currentRequest.url}'));
   }
 
-  Future<DMResult<Req, Res>> _processResponseChain(
-    Req request, Res response, int fromIndex,
-  ) async {
+  Future<DMResult<Req, Res>> _processResponseChain(Req request, Res response, int fromIndex) async {
     var currentResponse = response;
     for (var i = fromIndex; i >= 0; i--) {
       try {
@@ -58,9 +50,7 @@ class Downloader<T, Req extends Request, Res extends Response> {
     return DMResult.respond(currentResponse);
   }
 
-  Future<DMResult<Req, Res>> _processExceptionChain(
-    Req request, Object error, int fromIndex,
-  ) async {
+  Future<DMResult<Req, Res>> _processExceptionChain(Req request, Object error, int fromIndex) async {
     var currentError = error;
     for (var i = fromIndex; i >= 0; i--) {
       try {

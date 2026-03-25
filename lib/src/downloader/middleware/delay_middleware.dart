@@ -2,9 +2,8 @@ import 'package:flncrawly/src/downloader/middleware/downloader_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Adds a delay before each request for polite crawling.
-class DelayMiddleware<Req extends Request, Res extends Response>
-    extends DownloaderMiddleware<Req, Res> {
+/// Adds request delay for politeness.
+class DelayMiddleware<Req extends Request, Res extends Response> extends DownloaderMiddleware<Req, Res> {
   final Duration delay;
   const DelayMiddleware(this.delay);
 

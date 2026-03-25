@@ -1,6 +1,6 @@
 import 'package:flncrawly/src/pipeline/pipeline.dart';
 
-/// Logs each item to the console with a [prefix].
+/// Logs items to console.
 class LogPipeline<T> extends Pipeline<T> {
   final String prefix;
   LogPipeline([this.prefix = 'ITEM: ']);

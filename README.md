@@ -17,12 +17,12 @@ class BookProcessor extends Processor<Map, Request, HtmlResponse> {
   Stream<Result<Map, Request>> process(HtmlResponse response) async* {
     for (final node in response.$all('.product_pod')) {
       yield Result.item({
-        'title': node.$('h3 a')?.attr('title'),
-        'price': node.$('.price_color')?.text(),
-        'url': node.$('h3 a')?.absurl('href'),
+        'title': node.$('h3 a').one()?.attr('title'),
+        'price': node.$('.price_color').one()?.text(),
+        'url': response.urljoin(node.$('h3 a').one()?.attr('href') ?? ''),
       });
     }
-    final next = response.$('.next a')?.attr('href');
+    final next = response.$('.next a').one()?.attr('href');
     if (next != null) yield Result.follow(response.follow(next));
   }
 }
@@ -51,10 +51,9 @@ void main() async {
 
 **Selectors**:
 ```dart
-response.$('.css')?.text()
+response.$('.css').one()?.text()
 response.$all('a').attr('href')
-response.$x('//xpath')?.text()
-node.absurl('href')
+response.$x('//xpath').one()?.text()
 
 response.$path(r'$.jsonpath').text()
 response.$jmes('jmespath')?.raw()

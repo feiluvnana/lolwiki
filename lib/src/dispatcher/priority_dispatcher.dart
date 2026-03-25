@@ -4,8 +4,7 @@ import 'dart:math';
 import 'package:flncrawly/src/dispatcher/dispatcher.dart';
 import 'package:flncrawly/src/request/request.dart';
 
-/// Default [Dispatcher] with priority ordering, concurrency control,
-/// URL deduplication, and exponential backoff retries.
+/// Default dispatcher with priority, deduplication, and backoff.
 class PriorityDispatcher<Req extends Request> extends Dispatcher<Req> {
   final int maxRetries;
   final int maxConcurrent;
@@ -17,8 +16,7 @@ class PriorityDispatcher<Req extends Request> extends Dispatcher<Req> {
   final List<Req> _queue = [];
 
   final StreamController<Req> _requestController = StreamController<Req>();
-  final StreamController<DispatcherEvent<Req>> _eventController =
-      StreamController.broadcast();
+  final StreamController<DispatcherEvent<Req>> _eventController = StreamController.broadcast();
 
   PriorityDispatcher({this.maxRetries = 3, this.maxConcurrent = 10});
 

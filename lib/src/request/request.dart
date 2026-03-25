@@ -1,10 +1,4 @@
-/// An HTTP request to be fetched by the crawler engine.
-///
-/// ```dart
-/// Request.to('https://example.com')
-/// Request.post('https://api.example.com/login', body: utf8.encode('...'))
-/// Request(url: Uri.parse('https://example.com'), priority: 10)
-/// ```
+/// An HTTP request for the crawler.
 class Request {
   final Uri url;
   final String method;

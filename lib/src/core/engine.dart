@@ -8,15 +8,7 @@ import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Orchestrates [Dispatcher], [Downloader], [Processor], and [Pipeline]s.
-///
-/// ```
-/// [Processor.startRequests] → [Dispatcher] → [Downloader] → [Processor.process]
-///                                                                 ↓
-///                                                  Result.item   → [Pipeline]s
-///                                                  Result.follow → [Dispatcher]
-///                                                  Result.retry  → [Dispatcher]
-/// ```
+/// Orchestrates the crawl process.
 class Engine<T, Req extends Request, Res extends Response> {
   final Dispatcher<Req> dispatcher;
   final Downloader<T, Req, Res> downloader;
@@ -26,12 +18,7 @@ class Engine<T, Req extends Request, Res extends Response> {
   final CrawlStats stats = CrawlStats();
   bool _closed = false;
 
-  Engine({
-    required this.dispatcher,
-    required this.downloader,
-    required this.processor,
-    this.pipelines = const [],
-  }) {
+  Engine({required this.dispatcher, required this.downloader, required this.processor, this.pipelines = const []}) {
     dispatcher.engine = this;
     downloader.engine = this;
     processor.engine = this;
@@ -145,8 +132,7 @@ class CrawlStats {
   int retryCount = 0, followedCount = 0, droppedCount = 0, rescheduledCount = 0;
   DateTime? startTime, endTime;
 
-  Duration? get duration =>
-      (startTime != null && endTime != null) ? endTime!.difference(startTime!) : null;
+  Duration? get duration => (startTime != null && endTime != null) ? endTime!.difference(startTime!) : null;
 
   @override
   String toString() =>

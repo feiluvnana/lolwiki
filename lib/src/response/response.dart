@@ -2,14 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flncrawly/src/request/request.dart';
 
-/// Base class for all crawl responses.
-///
-/// | Subclass | Content-Type | Selectors |
-/// |----------|-------------|-----------|
-/// | [TextResponse] | `text/*` | `.text` |
-/// | [HtmlResponse] | `text/html` | `.$()`, `.$all()`, `.$x()` |
-/// | [XmlResponse] | `application/xml` | `.$x()`, `.$xall()` |
-/// | [JsonResponse] | `application/json` | `.$path()`, `.$jmes()` |
+/// Standard response for crawl requests.
 abstract class Response {
   final Uri url;
   final int status;
@@ -36,10 +29,6 @@ abstract class Response {
   /// Creates a follow-up [Request] inheriting headers, cookies, and meta.
   /// Resets retries to 0 since this is a new URL, not a retry.
   Request follow(String path, {Map<String, dynamic>? meta}) {
-    return request.copyWith(
-      url: urljoin(path),
-      meta: meta ?? this.meta,
-      retries: 0,
-    );
+    return request.copyWith(url: urljoin(path), meta: meta ?? this.meta, retries: 0);
   }
 }
