@@ -11,8 +11,13 @@ class RetryMiddleware<Req extends Request, Res extends Response> extends Downloa
 
   @override
   Future<DMResult<Req, Res>> processResponse(Req request, Res response) async {
-    if (retryOnStatusCodes.contains(response.status) && request.retries < maxRetries) {
-      return DMResult.reschedule(request.nextRetry() as Req);
+    final retries = (request.meta['retries'] as int?) ?? 0;
+    if (retryOnStatusCodes.contains(response.status) && retries < maxRetries) {
+      return DMResult.reschedule(request.copyWith(meta: {
+        ...request.meta,
+        'retries': retries + 1,
+        'dontFilter': true,
+      }) as Req);
     }
     return DMResult.respond(response);
   }

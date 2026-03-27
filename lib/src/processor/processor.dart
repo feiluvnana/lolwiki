@@ -5,90 +5,77 @@ import 'package:flncrawly/src/processor/middleware/processor_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// What the [Processor] yields back to the [Engine].
-///
-/// ```dart
-/// yield Result.item(Book('Dart in Action', '\$29.99'));
-/// yield Result.follow(res.follow('/next'));
-/// yield Result.finish();
-/// ```
-/// Defines extraction logic.
-sealed class Result<T, Req extends Request> {
+/// Process result (item, request, or control).
+sealed class Result<T, Req extends IRequest> {
   const Result();
   factory Result.item(T item) = ItemResult<T, Req>;
   factory Result.follow(Req request) = FollowResult<T, Req>;
   factory Result.finish() = FinishResult<T, Req>;
-  factory Result.retry(Req request) = RetryResult<T, Req>;
   factory Result.error(Object error, [StackTrace? stackTrace]) = ErrorResult<T, Req>;
 }
 
-class ItemResult<T, Req extends Request> extends Result<T, Req> {
+class ItemResult<T, Req extends IRequest> extends Result<T, Req> {
   final T item;
   ItemResult(this.item);
 }
 
-class FollowResult<T, Req extends Request> extends Result<T, Req> {
+class FollowResult<T, Req extends IRequest> extends Result<T, Req> {
   final Req request;
   FollowResult(this.request);
 }
 
-class FinishResult<T, Req extends Request> extends Result<T, Req> {
+class FinishResult<T, Req extends IRequest> extends Result<T, Req> {
   const FinishResult();
 }
 
-class RetryResult<T, Req extends Request> extends Result<T, Req> {
-  final Req request;
-  RetryResult(this.request);
-}
-
-class ErrorResult<T, Req extends Request> extends Result<T, Req> {
+class ErrorResult<T, Req extends IRequest> extends Result<T, Req> {
   final Object error;
   final StackTrace? stackTrace;
   ErrorResult(this.error, [this.stackTrace]);
 }
 
-abstract class Processor<T, Req extends Request, Res extends Response> {
-  late final Engine<T, Req, Res> engine;
+/// Extracts items or follows from responses.
+abstract interface class IProcessor<T, Req extends IRequest, Res extends IResponse> {
+  set engine(Engine<T, Req, Res> engine);
+
+  /// Initializes processor.
+  Future<void> open();
+
+  /// Initial requests to queue.
+  List<Req> get startRequests;
+
+  /// Orchestrates processing.
+  Stream<Result<T, Req>> handleResponse(Res response);
+
+  /// Finalizes processor.
+  Future<void> close();
+}
+
+/// Template processor with middleware support.
+abstract class Processor<T, Req extends IRequest, Res extends IResponse> implements IProcessor<T, Req, Res> {
+  @override
+  late Engine<T, Req, Res> engine;
   final List<ProcessorMiddleware<T, Req, Res>> middlewares = [];
 
-  List<Req> get startRequests;
+  @override
+  Future<void> open() async {}
+
+  @override
+  Future<void> close() async {
+    for (var m in middlewares) {
+      m.close();
+    }
+  }
+
+  /// Extracts results from response.
   Stream<Result<T, Req>> process(Res response);
 
-  /// Runs the middleware chain around [process]. Called by the engine.
+  @override
   Stream<Result<T, Req>> handleResponse(Res response) async* {
-    var currentResponse = response;
-    var lastCompletedMiddleware = -1;
-    try {
-      for (var i = 0; i < middlewares.length; i++) {
-        currentResponse = await middlewares[i].onInput(currentResponse);
-        lastCompletedMiddleware = i;
-      }
-      var resultStream = process(currentResponse);
-      for (var i = middlewares.length - 1; i >= 0; i--) {
-        resultStream = middlewares[i].onOutput(currentResponse, resultStream);
-      }
-      yield* resultStream;
-    } catch (e) {
-      final recovery = _tryRecover(currentResponse, e, lastCompletedMiddleware);
-      if (recovery != null) {
-        yield* recovery;
-      } else {
-        engine.log('[Processor] Unhandled: $e');
-      }
+    var raw = process(response);
+    for (var i = middlewares.length - 1; i >= 0; i--) {
+      raw = middlewares[i].onOutput(response, raw);
     }
-  }
-
-  Stream<Result<T, Req>>? _tryRecover(Res response, Object error, int fromIndex) {
-    for (var i = fromIndex; i >= 0; i--) {
-      final recovery = middlewares[i].onError(response, error);
-      if (recovery != null) return recovery;
-    }
-    return null;
-  }
-
-  void close() {
-    for (var middleware in middlewares) {
-      middleware.close();
-    }
+    yield* raw;
   }
 }

@@ -1,35 +1,46 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flncrawly/src/core/engine.dart';
 import 'package:flncrawly/src/request/request.dart';
 
 /// Schedules and deduplicates requests.
-abstract class Dispatcher<Req extends Request> {
-  late final Engine engine;
+abstract interface class IDispatcher<Req extends IRequest> {
+  set engine(Engine engine);
 
-  /// Stream of scheduler events.
-  Stream<DispatcherEvent<Req>> get eventStream;
+  /// Initializes dispatcher.
+  Future<void> open();
 
-  /// Stream of ready requests.
-  Stream<Req> get requestStream;
+  /// Queues a request. Returns true if added.
+  Future<bool> push(Req request);
 
-  void enqueue(Req request);
-  void retry(Req request);
-  void complete(Req request);
-  void close();
+  /// Pulls the next request. Returns null if empty.
+  Future<Req?> pull();
+
+  /// Finalizes dispatcher.
+  Future<void> close();
 }
 
-/// Dispatcher status events.
-enum DispatcherEventType { enqueued, dispatched, retrying, completed }
-
-/// Recorded scheduler event.
-class DispatcherEvent<Req extends Request> {
-  final DispatcherEventType type;
-  final Req request;
-  final DateTime timestamp;
-
-  DispatcherEvent(this.type, this.request) : timestamp = DateTime.now();
+/// Default in-memory dispatcher with deduplication.
+class Dispatcher<Req extends IRequest> implements IDispatcher<Req> {
+  @override
+  late final Engine engine;
+  final Set<String> _seen = {};
+  final Queue<Req> _queue = Queue<Req>();
 
   @override
-  String toString() => '${type.name.toUpperCase()}: ${request.url}';
+  Future<void> open() async {}
+
+  @override
+  Future<bool> push(Req request) async {
+    if (!_seen.add(request.fingerprint)) return false;
+    _queue.add(request);
+    return true;
+  }
+
+  @override
+  Future<Req?> pull() async => _queue.isEmpty ? null : _queue.removeFirst();
+
+  @override
+  Future<void> close() async => _queue.clear();
 }

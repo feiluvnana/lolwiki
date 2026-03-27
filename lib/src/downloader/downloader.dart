@@ -3,78 +3,55 @@ import 'package:flncrawly/src/downloader/middleware/downloader_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// Fetches requests via a chain of [DownloaderMiddleware]s.
-class Downloader<T, Req extends Request, Res extends Response> {
-  late final Engine<T, Req, Res> engine;
+/// Fetches requests.
+abstract interface class IDownloader<Req extends IRequest, Res extends IResponse> {
+  set engine(Engine engine);
+
+  /// Initializes downloader.
+  Future<void> open();
+
+  /// Performs fetch.
+  Future<Res> fetch(Req request);
+
+  /// Finalizes downloader.
+  Future<void> close();
+}
+
+/// Middleware-based downloader.
+class Downloader<Req extends IRequest, Res extends IResponse> implements IDownloader<Req, Res> {
+  @override
+  late final Engine engine;
   final List<DownloaderMiddleware<Req, Res>> middlewares;
 
   Downloader({this.middlewares = const []});
 
-  Future<DMResult<Req, Res>> fetch(Req request) async {
-    var currentRequest = request;
-    for (var i = 0; i < middlewares.length; i++) {
-      try {
-        final result = await middlewares[i].processRequest(currentRequest);
-        switch (result) {
-          case ContinueChain(:final request):
-            currentRequest = request;
-          case ForwardResponse(:final response):
-            return _processResponseChain(currentRequest, response, i);
-          case RescheduleRequest() || ReportError() || DropRequest():
-            return result;
-        }
-      } catch (e) {
-        return _processExceptionChain(currentRequest, e, i);
-      }
+  @override
+  Future<void> open() async {
+    for (final m in middlewares) {
+      await m.open();
     }
-    return DMResult.fail(StateError('No middleware fetched ${currentRequest.url}'));
   }
 
-  Future<DMResult<Req, Res>> _processResponseChain(Req request, Res response, int fromIndex) async {
-    var currentResponse = response;
-    for (var i = fromIndex; i >= 0; i--) {
-      try {
-        final result = await middlewares[i].processResponse(request, currentResponse);
-        switch (result) {
-          case ForwardResponse(:final response):
-            currentResponse = response;
-          case RescheduleRequest() || ReportError() || DropRequest():
-            return result;
-          case ContinueChain():
-            throw StateError('processResponse cannot return continueWith');
-        }
-      } catch (e) {
-        return _processExceptionChain(request, e, i - 1);
+  @override
+  Future<Res> fetch(Req request) async {
+    var req = request;
+    for (final m in middlewares) {
+      final res = await m.processRequest(req);
+      if (res is ContinueChain<Req, Res>) {
+        req = res.request;
+      } else if (res is ForwardResponse<Req, Res>) {
+        return res.response;
+      } else if (res is ReportError<Req, Res>) {
+        throw res.error;
       }
     }
-    return DMResult.respond(currentResponse);
+    throw StateError('No middleware handled ${request.url}');
   }
 
-  Future<DMResult<Req, Res>> _processExceptionChain(Req request, Object error, int fromIndex) async {
-    var currentError = error;
-    for (var i = fromIndex; i >= 0; i--) {
-      try {
-        final result = await middlewares[i].processException(request, currentError);
-        switch (result) {
-          case ReportError(:final error):
-            currentError = error;
-          case ForwardResponse(:final response):
-            return _processResponseChain(request, response, i - 1);
-          case RescheduleRequest() || DropRequest():
-            return result;
-          case ContinueChain():
-            throw StateError('processException cannot return continueWith');
-        }
-      } catch (e) {
-        currentError = e;
-      }
-    }
-    return DMResult.fail(currentError);
-  }
-
-  void close() {
-    for (var middleware in middlewares) {
-      middleware.close();
+  @override
+  Future<void> close() async {
+    for (final m in middlewares) {
+      m.close();
     }
   }
 }

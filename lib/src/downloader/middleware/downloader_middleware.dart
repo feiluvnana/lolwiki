@@ -1,16 +1,8 @@
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
 
-/// What a [DownloaderMiddleware] returns to control the download chain.
-///
-/// ```dart
-/// DMResult.continueWith(modifiedRequest)  // pass to next middleware
-/// DMResult.respond(cachedResponse)        // short-circuit with response
-/// DMResult.reschedule(request)            // requeue for later
-/// DMResult.fail(error)                    // report an error
-/// DMResult.drop()                         // silently discard
-/// ```
-sealed class DMResult<Req extends Request, Res extends Response> {
+/// Middleware result.
+sealed class DMResult<Req extends IRequest, Res extends IResponse> {
   const DMResult();
   factory DMResult.continueWith(Req request) = ContinueChain<Req, Res>;
   factory DMResult.respond(Res response) = ForwardResponse<Req, Res>;
@@ -19,48 +11,44 @@ sealed class DMResult<Req extends Request, Res extends Response> {
   factory DMResult.drop() = DropRequest<Req, Res>;
 }
 
-final class ContinueChain<Req extends Request, Res extends Response> extends DMResult<Req, Res> {
+final class ContinueChain<Req extends IRequest, Res extends IResponse> extends DMResult<Req, Res> {
   final Req request;
   const ContinueChain(this.request);
 }
 
-final class ForwardResponse<Req extends Request, Res extends Response> extends DMResult<Req, Res> {
+final class ForwardResponse<Req extends IRequest, Res extends IResponse> extends DMResult<Req, Res> {
   final Res response;
   const ForwardResponse(this.response);
 }
 
-final class RescheduleRequest<Req extends Request, Res extends Response> extends DMResult<Req, Res> {
+final class RescheduleRequest<Req extends IRequest, Res extends IResponse> extends DMResult<Req, Res> {
   final Req request;
   const RescheduleRequest(this.request);
 }
 
-final class ReportError<Req extends Request, Res extends Response> extends DMResult<Req, Res> {
+final class ReportError<Req extends IRequest, Res extends IResponse> extends DMResult<Req, Res> {
   final Object error;
   final StackTrace? stackTrace;
   const ReportError(this.error, [this.stackTrace]);
 }
 
-final class DropRequest<Req extends Request, Res extends Response> extends DMResult<Req, Res> {
+final class DropRequest<Req extends IRequest, Res extends IResponse> extends DMResult<Req, Res> {
   const DropRequest();
 }
 
-/// Intercepts requests before downloading and responses after.
-///
-/// ```
-/// Request → [processRequest] → Network
-///                                  ↓
-/// Engine ← [processResponse] ← Response
-///           or
-/// Engine ← [processException] ← Error
-/// ```
-abstract class DownloaderMiddleware<Req extends Request, Res extends Response> {
+/// Intercepts requests and responses.
+abstract class DownloaderMiddleware<Req extends IRequest, Res extends IResponse> {
   const DownloaderMiddleware();
 
+  /// Called before fetch.
+  Future<void> open() async {}
+
+  /// Intercepts request.
   Future<DMResult<Req, Res>> processRequest(Req request) async => DMResult.continueWith(request);
 
+  /// Intercepts response.
   Future<DMResult<Req, Res>> processResponse(Req request, Res response) async => DMResult.respond(response);
 
-  Future<DMResult<Req, Res>> processException(Req request, Object exception) async => DMResult.fail(exception);
-
+  /// Called after fetch.
   void close() {}
 }

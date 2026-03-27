@@ -1,104 +1,82 @@
 # 🕸️ flncrawly
 
-A robust, fluent web crawling framework for Dart.
+A robust, fluent web crawling framework for Dart. Simplified, interface-driven, and pull-based.
 
 ## Quick Start
 
 ```dart
 import 'package:flncrawly/flncrawly.dart';
 
-class BookProcessor extends Processor<Map, Request, HtmlResponse> {
-  @override
-  List<Request> get startRequests => [
-    Request.to('http://books.toscrape.com/'),
-  ];
+class PubSearchProcessor extends Processor<Map<String, String>, IRequest, IResponse> {
+  final String query;
+  PubSearchProcessor(this.query);
 
   @override
-  Stream<Result<Map, Request>> process(HtmlResponse response) async* {
-    for (final node in response.$all('.product_pod')) {
+  List<IRequest> get startRequests => [
+        Request.to('https://pub.dev/packages?q=$query'),
+      ];
+
+  @override
+  Stream<Result<Map<String, String>, IRequest>> process(IResponse response) async* {
+    if (response is! HtmlResponse) return;
+
+    // .all() returns Iterable<HtmlSelection>
+    for (final item in response.$('.package-list .item').all()) {
       yield Result.item({
-        'title': node.$('h3 a').one()?.attr('title'),
-        'price': node.$('.price_color').one()?.text(),
-        'url': response.urljoin(node.$('h3 a').one()?.attr('href') ?? ''),
+        'name': item.$('.title a').one()?.text() ?? 'Unknown',
+        'url': response.urljoin(item.$('.title a').one()?.attr('href') ?? '').toString(),
       });
     }
-    final next = response.$('.next a').one()?.attr('href');
+
+    final next = response.$('.pagination .next').one()?.attr('href');
     if (next != null) yield Result.follow(response.follow(next));
   }
 }
 
 void main() async {
-  await Crawly(BookProcessor())
-      .downloadWith(DelayMiddleware(Duration(milliseconds: 500)))
-      .downloadWith(RetryMiddleware())
+  await Crawly(PubSearchProcessor('http'))
       .downloadWith(UserAgentMiddleware())
-      .processWith(DepthMiddleware(maxDepth: 3))
-      .pipeWith(FilterPipeline((item) => item['title'] != null))
-      .pipeWith(JsonFilePipeline('books.json'))
-      .pipeWith(LogPipeline('📖 '))
+      .pipeWith(LogPipeline())
       .crawl();
 }
 ```
 
 ## Core Concepts
 
-**Processor** — defines `startRequests` and `process()`:
-- `Result.item(data)` → emit to pipelines
-- `Result.follow(request)` → schedule new request
-- `Result.retry(request)` → retry with backoff
-- `Result.error(e)` → report error
-- `Result.finish()` → stop crawling
+- **`IRequest` / `Request`**: Simple value objects for target URLs and metadata.
+- **`IResponse` / `Response`**: Wrappers for HTTP results with fluent selector support.
+- **`IProcessor`**: Defines how to extract items and which links to follow.
+- **`IDispatcher`**: Handles request queueing and deduplication (Pull-based).
+- **`IDownloader`**: Fetches requests via a customizable middleware chain.
+- **`Pipeline`**: Processes extracted items (e.g., saving to file).
 
-**Selectors**:
+## Selectors
+
+Every response supports fluent, delayed-execution selectors:
+
 ```dart
 response.$('.css').one()?.text()
-response.$all('a').attr('href')
-response.$x('//xpath').one()?.text()
+response.$('.items').all() // Returns Iterable<Selection>
+response.$x('//xpath').one()?.attr('src')
 
-response.$path(r'$.jsonpath').text()
-response.$jmes('jmespath')?.raw()
+// JSON/XML Support
+response.$path(r'$.jsonpath').one()
+response.$jmes('jmespath').one()
 ```
 
-## Built-in Components
+## Lifecycle
 
-| Downloader Middlewares | Purpose |
-|----------------------|---------|
-| `UserAgentMiddleware` | Rotate browser User-Agent |
-| `DelayMiddleware` | Rate limiting |
-| `RetryMiddleware` | Auto-retry on 5xx/429/timeout |
-| `H1DownloaderMiddleware` | HTTP/1.1 fetcher (auto-added) |
-
-| Processor Middlewares | Purpose |
-|----------------------|---------|
-| `DepthMiddleware` | Limit crawl depth |
-
-| Pipelines | Purpose |
-|-----------|---------|
-| `LogPipeline` | Print items |
-| `FilterPipeline` | Drop items failing a test |
-| `JsonFilePipeline` | Export to JSON file |
-| `FunctionalPipeline` | Pipeline from a closure |
-
-## Fluent Builder
-
-```dart
-Crawly(processor)
-    .setDispatcher(PriorityDispatcher(maxConcurrent: 5))
-    .setDownloader(customDownloader)
-    .downloadWith(middleware)
-    .processWith(middleware)
-    .pipeWith(pipeline)
-    .pipeWithAll([pipeline1, pipeline2])
-    .build()   // Engine without starting
-    .crawl()   // build + start
-```
+Every component implements `open()` and `close()`:
+1. `Engine.open()` calls `open()` on Dispatcher, Downloader, Processor, and Pipelines.
+2. `Engine.start()` pulls and processes until the queue is empty.
+3. `Engine.close()` ensures all resources are released.
 
 ## Architecture
 
 ```
-[Processor.startRequests] → [Dispatcher] → [Downloader] → [Processor.process]
-                                                                ↓
-                                                 Result.item   → [Pipeline]s
-                                                 Result.follow → [Dispatcher]
-                                                 Result.retry  → [Dispatcher]
+[Processor.startRequests] → [Dispatcher]
+                                ↓ (pull)
+[Pipeline] ← (item) ← [Processor.process] ← [Downloader]
+                         ↓ (follow)
+                    [Dispatcher]
 ```

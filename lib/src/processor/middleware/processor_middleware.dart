@@ -1,19 +1,13 @@
 import 'dart:async';
-
-import 'package:flncrawly/src/processor/processor.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
+import 'package:flncrawly/src/processor/processor.dart';
 
-/// Intercepts responses before/after the [Processor].
-abstract class ProcessorMiddleware<T, Req extends Request, Res extends Response> {
+/// Intercepts response input and result output.
+abstract class ProcessorMiddleware<T, Req extends IRequest, Res extends IResponse> {
   const ProcessorMiddleware();
-
-  Future<Res> onInput(Res response) async => response;
-
-  Stream<Result<T, Req>> onOutput(Res response, Stream<Result<T, Req>> results) => results;
-
-  /// Return a recovery stream, or `null` to propagate the error.
-  Stream<Result<T, Req>>? onError(Res response, Object error) => null;
-
+  Future<void> open() async {}
+  FutureOr<Res> onInput(Res r) async => r;
+  Stream<Result<T, Req>> onOutput(Res r, Stream<Result<T, Req>> s) => s;
   void close() {}
 }

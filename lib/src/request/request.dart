@@ -1,14 +1,27 @@
-class Request {
+/// Represents a crawl request.
+abstract interface class IRequest {
+  Uri get url;
+  String get method;
+  Map<String, String> get headers;
+  List<int>? get body;
+  Map<String, dynamic> get meta;
+
+  /// Unique hash for deduplication.
+  String get fingerprint;
+}
+
+/// Default [IRequest] implementation.
+class Request implements IRequest {
+  @override
   final Uri url;
+  @override
   final String method;
+  @override
   final Map<String, String> headers;
+  @override
   final List<int>? body;
+  @override
   final Map<String, dynamic> meta;
-  final Map<String, String> cookies;
-  final String? encoding;
-  final int priority;
-  final int retries;
-  final bool dontFilter;
 
   const Request({
     required this.url,
@@ -16,21 +29,12 @@ class Request {
     this.headers = const {},
     this.body,
     this.meta = const {},
-    this.cookies = const {},
-    this.encoding,
-    this.priority = 0,
-    this.retries = 0,
-    this.dontFilter = false,
   });
 
   factory Request.to(String url) => Request(url: Uri.parse(url));
 
-  String get fingerprint {
-    if (body == null || body!.isEmpty) return '$method:$url';
-    return '$method:$url:${body.hashCode}';
-  }
-
-  Request nextRetry() => copyWith(retries: retries + 1, dontFilter: true);
+  @override
+  String get fingerprint => '$method:$url:${body.hashCode}';
 
   Request copyWith({
     Uri? url,
@@ -38,24 +42,15 @@ class Request {
     Map<String, String>? headers,
     List<int>? body,
     Map<String, dynamic>? meta,
-    Map<String, String>? cookies,
-    String? encoding,
-    int? priority,
-    int? retries,
-    bool? dontFilter,
-  }) =>
-      Request(
-        url: url ?? this.url,
-        method: method ?? this.method,
-        headers: headers ?? this.headers,
-        body: body ?? this.body,
-        meta: meta ?? this.meta,
-        cookies: cookies ?? this.cookies,
-        encoding: encoding ?? this.encoding,
-        priority: priority ?? this.priority,
-        retries: retries ?? this.retries,
-        dontFilter: dontFilter ?? this.dontFilter,
-      );
+  }) {
+    return Request(
+      url: url ?? this.url,
+      method: method ?? this.method,
+      headers: headers ?? this.headers,
+      body: body ?? this.body,
+      meta: meta ?? this.meta,
+    );
+  }
 
   @override
   String toString() => '[$method] $url';

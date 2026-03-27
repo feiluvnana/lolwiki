@@ -6,12 +6,35 @@ import 'package:flncrawly/src/response/html_response.dart';
 import 'package:flncrawly/src/response/json_response.dart';
 import 'package:flncrawly/src/response/xml_response.dart';
 
-class Response {
+/// Represents a crawl response.
+abstract interface class IResponse {
+  Uri get url;
+  int get status;
+  Uint8List get body;
+  Map<String, dynamic> get headers;
+  IRequest get request;
+  Map<String, dynamic> get meta;
+
+  /// Resolves a path against the current URL.
+  Uri urljoin(String path);
+
+  /// Creates a follow-up request.
+  IRequest follow(String path);
+}
+
+/// Default [IResponse] implementation.
+class Response implements IResponse {
+  @override
   final Uri url;
+  @override
   final int status;
+  @override
   final Uint8List body;
+  @override
   final Map<String, dynamic> headers;
-  final Request request;
+  @override
+  final IRequest request;
+  @override
   final Map<String, dynamic> meta;
 
   const Response({
@@ -23,14 +46,18 @@ class Response {
     this.meta = const {},
   });
 
+  @override
   Uri urljoin(String path) => url.resolve(path);
 
-  Request follow(String path) => request.copyWith(
-        url: urljoin(path),
-        cookies: request.cookies,
-      );
+  @override
+  IRequest follow(String path) {
+    final req = request;
+    if (req is Request) return req.copyWith(url: urljoin(path));
+    return Request(url: urljoin(path));
+  }
 }
 
+/// Base for text-based responses.
 class TextResponse extends Response {
   const TextResponse({
     required super.url,
@@ -41,8 +68,10 @@ class TextResponse extends Response {
     super.meta,
   });
 
+  /// Decodes body as UTF-8.
   String get text => utf8.decode(body);
 
+  /// Returns [HtmlResponse] view.
   HtmlResponse get html => HtmlResponse(
         url: url,
         status: status,
@@ -52,6 +81,7 @@ class TextResponse extends Response {
         meta: meta,
       );
 
+  /// Returns [XmlResponse] view.
   XmlResponse get xml => XmlResponse(
         url: url,
         status: status,
@@ -61,6 +91,7 @@ class TextResponse extends Response {
         meta: meta,
       );
 
+  /// Returns [JsonResponse] view.
   JsonResponse get json => JsonResponse(
         url: url,
         status: status,
