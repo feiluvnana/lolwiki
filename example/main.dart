@@ -39,6 +39,6 @@ void main() async {
       .processWith(DepthMiddleware(maxDepth: 1))
       .pipeWith(FilterPipeline((item) => item['name']?.isNotEmpty ?? false))
       .pipeWith(JsonFilePipeline('results.json'))
-      .pipeWith(LogPipeline('📦 '))
+      .pipeWith(LogPipeline())
       .crawl();
 }

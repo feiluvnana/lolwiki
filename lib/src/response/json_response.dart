@@ -1,17 +1,16 @@
 import 'dart:convert';
-import 'package:flncrawly/src/response/text_response.dart';
+import 'package:flncrawly/src/response/response.dart';
 import 'package:jmespath/jmespath.dart';
 import 'package:json_path/json_path.dart';
 
-/// Response with JSONPath/JMESPath selection.
 class JsonResponse extends TextResponse {
   const JsonResponse({
     required super.url,
     required super.status,
-    required super.headers,
     required super.body,
+    super.headers,
     required super.request,
-    required super.meta,
+    super.meta,
   });
 
   JsonSelector get selector => JsonSelector._(jsonDecode(text), []);
@@ -25,6 +24,7 @@ enum JsonSelectorType { path, jmes }
 
 class JsonSelector {
   final dynamic data;
+
   final List<(JsonSelectorType type, String expr)> selectors;
 
   const JsonSelector._(this.data, this.selectors);
@@ -85,12 +85,15 @@ final class JsonSelection {
 }
 
 final class JsonSelections extends Iterable<JsonSelection> {
-  final List<dynamic> _values;
+  final List<dynamic> values;
 
-  const JsonSelections._(this._values);
+  const JsonSelections._(this.values);
 
   @override
-  Iterator<JsonSelection> get iterator => _values.map((v) => JsonSelection._(v)).iterator;
+  Iterator<JsonSelection> get iterator => values.map((v) => JsonSelection._(v)).iterator;
+
+  Iterable<JsonSelector> $(String expr) => values.map((v) => JsonSelector._(v, [(JsonSelectorType.path, expr)]));
+  Iterable<JsonSelector> $jmes(String expr) => values.map((v) => JsonSelector._(v, [(JsonSelectorType.jmes, expr)]));
 
   List<String> text() => map((e) => e.text()).toList();
   List<dynamic> raw() => map((e) => e.raw()).toList();

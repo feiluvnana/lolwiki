@@ -1,16 +1,15 @@
-import 'package:flncrawly/src/response/text_response.dart';
+import 'package:flncrawly/src/response/response.dart';
 import 'package:xml/xml.dart';
 import 'package:xml/xpath.dart';
 
-/// Response with XPath selection.
 class XmlResponse extends TextResponse {
   const XmlResponse({
     required super.url,
     required super.status,
-    required super.headers,
     required super.body,
+    super.headers,
     required super.request,
-    required super.meta,
+    super.meta,
   });
 
   XmlSelector get selector => XmlSelector._(XmlDocument.parse(text), []);
@@ -52,6 +51,7 @@ class XmlSelector {
 
 final class XmlSelection {
   final XmlNode node;
+
   const XmlSelection._(this.node);
 
   XmlSelector $x(String expr) => XmlSelector._(node, [expr]);
@@ -62,11 +62,14 @@ final class XmlSelection {
 }
 
 final class XmlSelections extends Iterable<XmlSelection> {
-  final List<XmlNode> _nodes;
-  const XmlSelections._(this._nodes);
+  final List<XmlNode> nodes;
+
+  const XmlSelections._(this.nodes);
 
   @override
-  Iterator<XmlSelection> get iterator => _nodes.map((n) => XmlSelection._(n)).iterator;
+  Iterator<XmlSelection> get iterator => nodes.map((n) => XmlSelection._(n)).iterator;
+
+  Iterable<XmlSelector> $x(String expr) => nodes.map((n) => XmlSelector._(n, [expr]));
 
   List<String> text() => map((e) => e.text()).toList();
   List<String> attr(String name) => map((e) => e.attr(name)).toList();

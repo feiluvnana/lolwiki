@@ -1,34 +1,72 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flncrawly/src/request/request.dart';
+import 'package:flncrawly/src/response/html_response.dart';
+import 'package:flncrawly/src/response/json_response.dart';
+import 'package:flncrawly/src/response/xml_response.dart';
 
-/// Standard response for crawl requests.
-abstract class Response {
+class Response {
   final Uri url;
   final int status;
-  final Map<String, dynamic> headers;
   final Uint8List body;
+  final Map<String, dynamic> headers;
   final Request request;
   final Map<String, dynamic> meta;
 
   const Response({
     required this.url,
     required this.status,
-    required this.headers,
     required this.body,
+    this.headers = const {},
     required this.request,
-    required this.meta,
+    this.meta = const {},
   });
-
-  bool get isSuccess => status >= 200 && status < 300;
-  bool get isRedirect => status >= 300 && status < 400;
-  bool get isError => status >= 400;
 
   Uri urljoin(String path) => url.resolve(path);
 
-  /// Creates a follow-up [Request] inheriting headers, cookies, and meta.
-  /// Resets retries to 0 since this is a new URL, not a retry.
-  Request follow(String path, {Map<String, dynamic>? meta}) {
-    return request.copyWith(url: urljoin(path), meta: meta ?? this.meta, retries: 0);
-  }
+  Request follow(String path) => request.copyWith(
+        url: urljoin(path),
+        cookies: request.cookies,
+      );
+}
+
+class TextResponse extends Response {
+  const TextResponse({
+    required super.url,
+    required super.status,
+    required super.body,
+    super.headers,
+    required super.request,
+    super.meta,
+  });
+
+  String get text => utf8.decode(body);
+
+  HtmlResponse get html => HtmlResponse(
+        url: url,
+        status: status,
+        body: body,
+        headers: headers,
+        request: request,
+        meta: meta,
+      );
+
+  XmlResponse get xml => XmlResponse(
+        url: url,
+        status: status,
+        body: body,
+        headers: headers,
+        request: request,
+        meta: meta,
+      );
+
+  JsonResponse get json => JsonResponse(
+        url: url,
+        status: status,
+        body: body,
+        headers: headers,
+        request: request,
+        meta: meta,
+      );
 }

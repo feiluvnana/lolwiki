@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flncrawly/src/downloader/middleware/downloader_middleware.dart';
 import 'package:flncrawly/src/request/request.dart';
 import 'package:flncrawly/src/response/response.dart';
-import 'package:flncrawly/src/response/text_response.dart';
 import 'package:http/http.dart' as http;
 
 /// Fetches via HTTP/1.1 with cookie support.

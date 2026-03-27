@@ -1,17 +1,16 @@
-import 'package:flncrawly/src/response/text_response.dart';
+import 'package:flncrawly/src/response/response.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
-/// Response with CSS/XPath selection.
 class HtmlResponse extends TextResponse {
   const HtmlResponse({
     required super.url,
     required super.status,
-    required super.headers,
     required super.body,
+    super.headers,
     required super.request,
-    required super.meta,
+    super.meta,
   });
 
   HtmlSelector get selector => HtmlSelector._(parse(text).documentElement!, []);
@@ -80,11 +79,15 @@ final class HtmlSelection {
 }
 
 final class HtmlSelections extends Iterable<HtmlSelection> {
-  final List<Element> _elements;
-  const HtmlSelections._(this._elements);
+  final List<Element> elements;
+
+  const HtmlSelections._(this.elements);
 
   @override
-  Iterator<HtmlSelection> get iterator => _elements.map((e) => HtmlSelection._(e)).iterator;
+  Iterator<HtmlSelection> get iterator => elements.map((e) => HtmlSelection._(e)).iterator;
+
+  Iterable<HtmlSelector> $(String expr) => elements.map((e) => HtmlSelector._(e, [(HtmlSelectorType.css, expr)]));
+  Iterable<HtmlSelector> $x(String expr) => elements.map((e) => HtmlSelector._(e, [(HtmlSelectorType.xpath, expr)]));
 
   List<String> text() => map((e) => e.text()).toList();
   List<String> attr(String name) => map((e) => e.attr(name)).toList();
